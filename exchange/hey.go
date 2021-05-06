@@ -58,6 +58,7 @@ func NewHeyService(h host.Host, pm PeerManager, hg HeyGetter) *HeyService {
 type Hey struct {
 	Regions   []RegionCode
 	IndexRoot *cid.Cid // If the node has an empty index the root will be nil
+	Cluster   string
 }
 
 // Run starts a new goroutine in which we listen for new peers we successfully connected to

@@ -78,6 +78,7 @@ require (
 	golang.org/x/exp v0.0.0-20200513190911-00229845015e // indirect
 	golang.org/x/lint v0.0.0-20200302205851-738671d3881b // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
+	gonum.org/v1/gonum v0.9.1
 )
 
 replace github.com/filecoin-project/filecoin-ffi => ./extern/filecoin-ffi

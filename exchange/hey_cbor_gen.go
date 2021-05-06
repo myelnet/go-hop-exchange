@@ -16,7 +16,7 @@ var _ = xerrors.Errorf
 var _ = cid.Undef
 var _ = sort.Sort
 
-var lengthBufHey = []byte{130}
+var lengthBufHey = []byte{131}
 
 func (t *Hey) MarshalCBOR(w io.Writer) error {
 	if t == nil {
@@ -55,6 +55,17 @@ func (t *Hey) MarshalCBOR(w io.Writer) error {
 		}
 	}
 
+	// t.Cluster (string) (string)
+	if len(t.Cluster) > cbg.MaxLength {
+		return xerrors.Errorf("Value in field t.Cluster was too long")
+	}
+
+	if err := cbg.WriteMajorTypeHeaderBuf(scratch, w, cbg.MajTextString, uint64(len(t.Cluster))); err != nil {
+		return err
+	}
+	if _, err := io.WriteString(w, string(t.Cluster)); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -72,7 +83,7 @@ func (t *Hey) UnmarshalCBOR(r io.Reader) error {
 		return fmt.Errorf("cbor input should be of type array")
 	}
 
-	if extra != 2 {
+	if extra != 3 {
 		return fmt.Errorf("cbor input had wrong number of fields")
 	}
 
@@ -130,6 +141,16 @@ func (t *Hey) UnmarshalCBOR(r io.Reader) error {
 			t.IndexRoot = &c
 		}
 
+	}
+	// t.Cluster (string) (string)
+
+	{
+		sval, err := cbg.ReadStringBuf(br, scratch)
+		if err != nil {
+			return err
+		}
+
+		t.Cluster = string(sval)
 	}
 	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
 	sel "github.com/myelnet/pop/selectors"
+	"gonum.org/v1/gonum/stat/distuv"
 )
 
 //go:generate cbor-gen-for Request
@@ -102,17 +104,19 @@ type Replication struct {
 	hs        *HeyService
 	idx       *Index
 	rgs       []Region
-	reqProtos []protocol.ID
-	emitter   event.Emitter
-	indexRcvd chan struct{}
-	interval  time.Duration
-	rtv       RoutedRetriever
+	reqProtos []protocol.ID   // protocol IDs used to send and receive requests
+	emitter   event.Emitter   // emitter is triggered when new content is loaded
+	interval  time.Duration   // index update interval
+	rtv       RoutedRetriever // used for retrieving new content
+
+	cmu     sync.Mutex
+	cluster string // cluster ID this node is part of (based on peer ID strings)
 
 	pmu   sync.Mutex
-	pulls map[cid.Cid]*peer.Set
+	pulls map[cid.Cid]*peer.Set // authorized pull requests
 
 	smu    sync.Mutex
-	stores map[cid.Cid]*multistore.Store
+	stores map[cid.Cid]*multistore.Store // stores used for temporarily storing peer indexes
 }
 
 // NewReplication starts the exchange replication management system
@@ -125,10 +129,10 @@ func NewReplication(h host.Host, idx *Index, dt datatransfer.Manager, rtv Routed
 		rgs:       rgs,
 		idx:       idx,
 		rtv:       rtv,
+		cluster:   h.ID().String(), // initially starts alone in its own cluster
 		interval:  60 * time.Second,
 		reqProtos: []protocol.ID{PopRequestProtocolID},
 		pulls:     make(map[cid.Cid]*peer.Set),
-		indexRcvd: make(chan struct{}),
 		stores:    make(map[cid.Cid]*multistore.Store),
 	}
 	r.hs = NewHeyService(h, pm, r)
@@ -175,6 +179,8 @@ func (r *Replication) pumpIndexes(ctx context.Context, sub event.Subscription) {
 			return
 		case evt := <-sub.Out():
 			hevt := evt.(HeyEvt)
+			// check if we should join that peer's cluster or not
+			r.upgradeCluster(hevt.Cluster, hevt.Peer)
 			if hevt.IndexRoot != nil {
 				if fetchDone == nil {
 					fetchDone = make(chan fetchResult, 1)
@@ -208,6 +214,40 @@ func (r *Replication) pumpIndexes(ctx context.Context, sub event.Subscription) {
 			}
 		}
 	}
+}
+
+// upgradeCluster computes if the node should join the cluster of a new connected peer or not
+func (r *Replication) upgradeCluster(cl string, pr peer.ID) {
+	peers := r.pm.AllPeers()
+	var sum, mean, sd float64
+	for _, v := range peers {
+		sum += float64(v.Latency)
+	}
+	mean = sum / float64(len(peers))
+	for _, v := range peers {
+		sd += math.Pow(float64(v.Latency)-mean, 2)
+	}
+	sd = math.Sqrt(sd / float64(len(peers)))
+	dist := distuv.Normal{
+		Mu:    mean,
+		Sigma: sd,
+	}
+	bern := distuv.Bernoulli{
+		P: dist.CDF(float64(peers[pr].Latency)),
+	}
+	p := bern.Rand()
+	if p == 1 {
+		r.cmu.Lock()
+		r.cluster = cl
+		r.cmu.Unlock()
+	}
+}
+
+// Cluster returns the name of the current cluster this peer belongs to
+func (r *Replication) Cluster() string {
+	r.cmu.Lock()
+	defer r.cmu.Unlock()
+	return r.cluster
 }
 
 // refreshIndex is a long running process that regularly inspects received indexes
@@ -308,9 +348,12 @@ func (r *Replication) GetHey() Hey {
 		regions[i] = rg.Code
 		i++
 	}
+	r.cmu.Lock()
 	h := Hey{
 		Regions: regions,
+		Cluster: r.cluster,
 	}
+	r.cmu.Unlock()
 	idxr := r.idx.Root()
 	if idxr != cid.Undef {
 		h.IndexRoot = &idxr

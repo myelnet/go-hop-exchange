@@ -31,6 +31,7 @@ type PeerMgr struct {
 // HeyEvt is emitted when a Hey is received and accessible via the libp2p event bus subscription
 type HeyEvt struct {
 	Peer      peer.ID
+	Cluster   string
 	IndexRoot *cid.Cid // nil index root means empty index i.e. brand new node
 }
 
@@ -66,6 +67,7 @@ func (pm *PeerMgr) Receive(p peer.ID, h Hey) {
 		if reg, ok := pm.regions[r]; ok {
 			pm.emitter.Emit(HeyEvt{
 				Peer:      p,
+				Cluster:   h.Cluster,
 				IndexRoot: h.IndexRoot,
 			})
 			// These peers should be trimmed last when the number of connections overflows
@@ -114,4 +116,11 @@ func (pm *PeerMgr) Peers(n int, rl []Region, ignore map[peer.ID]bool) []peer.ID 
 		}
 	}
 	return peers
+}
+
+// AllPeers returns all the peers known by the manager
+func (pm *PeerMgr) AllPeers() map[peer.ID]Peer {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	return pm.peers
 }

@@ -544,3 +544,63 @@ func TestSendDispatchDiffRegions(t *testing.T) {
 	}
 	require.Equal(t, 5, len(recipients))
 }
+
+func TestClustering(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	mn := mocknet.New(ctx)
+
+	withSwarmT := func(tn *testutil.TestNode) {
+		netw := swarmt.GenSwarm(t, context.Background())
+		h := bhost.NewBlankHost(netw, bhost.WithConnectionManager(
+			connmgr.NewConnManager(10, 11, time.Second),
+		))
+		tn.Host = h
+	}
+	names := make(map[string]peer.ID)
+	setupNode := func(name string) (*testutil.TestNode, *Replication, *mockRetriever) {
+		n := testutil.NewTestNode(mn, t, withSwarmT)
+		names[name] = n.Host.ID()
+		n.SetupDataTransfer(ctx, t)
+		idx, err := NewIndex(n.Ds, n.Ms, WithBounds(2000000, 1800000))
+		require.NoError(t, err)
+		rtv := NewMockRetriever(n.Dt, idx)
+		repl := NewReplication(
+			n.Host,
+			idx,
+			n.Dt,
+			rtv,
+			[]Region{global},
+		)
+		// repl.interval = 2 * time.Second
+		require.NoError(t, repl.Start(ctx))
+		return n, repl, rtv
+	}
+
+	nA, rA, _ := setupNode("A")
+	nB, rB, _ := setupNode("B")
+	nC, rC, _ := setupNode("C")
+	nD, rD, _ := setupNode("D")
+	nE, rE, _ := setupNode("E")
+	nF, rF, _ := setupNode("F")
+	nG, rG, _ := setupNode("G")
+	nH, rH, _ := setupNode("H")
+
+	err := mn.LinkAll()
+	require.NoError(t, err)
+
+	err = mn.ConnectAllButSelf()
+	require.NoError(t, err)
+
+	time.Sleep(time.Second)
+
+	require.Equal(t, nA.Host.ID().String(), rA.Cluster())
+	require.Equal(t, nB.Host.ID().String(), rB.Cluster())
+	require.Equal(t, nC.Host.ID().String(), rC.Cluster())
+	require.Equal(t, nD.Host.ID().String(), rD.Cluster())
+	require.Equal(t, nE.Host.ID().String(), rE.Cluster())
+	require.Equal(t, nF.Host.ID().String(), rF.Cluster())
+	require.Equal(t, nG.Host.ID().String(), rG.Cluster())
+	require.Equal(t, nH.Host.ID().String(), rH.Cluster())
+}
