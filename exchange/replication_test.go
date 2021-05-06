@@ -558,49 +558,70 @@ func TestClustering(t *testing.T) {
 		))
 		tn.Host = h
 	}
-	names := make(map[string]peer.ID)
-	setupNode := func(name string) (*testutil.TestNode, *Replication, *mockRetriever) {
+	setupNode := func(name string) (*testutil.TestNode, *Replication) {
 		n := testutil.NewTestNode(mn, t, withSwarmT)
-		names[name] = n.Host.ID()
 		n.SetupDataTransfer(ctx, t)
 		idx, err := NewIndex(n.Ds, n.Ms, WithBounds(2000000, 1800000))
 		require.NoError(t, err)
-		rtv := NewMockRetriever(n.Dt, idx)
-		repl := NewReplication(
-			n.Host,
-			idx,
-			n.Dt,
-			rtv,
-			[]Region{global},
-		)
-		// repl.interval = 2 * time.Second
-		require.NoError(t, repl.Start(ctx))
-		return n, repl, rtv
+		repl := &Replication{
+			h:         n.Host,
+			idx:       idx,
+			pm:        NewPeerMgr(n.Host, []Region{global}),
+			clusterID: n.Host.ID().String(),
+			rgs:       []Region{global},
+		}
+		return n, repl
 	}
 
-	nA, rA, _ := setupNode("A")
-	nB, rB, _ := setupNode("B")
-	nC, rC, _ := setupNode("C")
-	nD, rD, _ := setupNode("D")
-	nE, rE, _ := setupNode("E")
-	nF, rF, _ := setupNode("F")
-	nG, rG, _ := setupNode("G")
-	nH, rH, _ := setupNode("H")
+	nA, rA := setupNode("A")
+	nB, rB := setupNode("B")
+	nC, rC := setupNode("C")
+	nD, rD := setupNode("D")
+	nE, rE := setupNode("E")
+	nF, rF := setupNode("F")
+	nG, rG := setupNode("G")
+	nH, rH := setupNode("H")
 
+	// Doesn't really matter
 	err := mn.LinkAll()
 	require.NoError(t, err)
 
 	err = mn.ConnectAllButSelf()
 	require.NoError(t, err)
 
-	time.Sleep(time.Second)
+	// A connects with B
+	rA.pm.Receive(nB.Host.ID(), rB.GetHey())
+	require.NoError(t, rA.pm.RecordLatency(nB.Host.ID(), 100*time.Millisecond))
+	rB.pm.Receive(nA.Host.ID(), rA.GetHey())
+	require.NoError(t, rB.pm.RecordLatency(nA.Host.ID(), 100*time.Millisecond))
 
-	require.Equal(t, nA.Host.ID().String(), rA.Cluster())
-	require.Equal(t, nB.Host.ID().String(), rB.Cluster())
-	require.Equal(t, nC.Host.ID().String(), rC.Cluster())
-	require.Equal(t, nD.Host.ID().String(), rD.Cluster())
-	require.Equal(t, nE.Host.ID().String(), rE.Cluster())
-	require.Equal(t, nF.Host.ID().String(), rF.Cluster())
-	require.Equal(t, nG.Host.ID().String(), rG.Cluster())
-	require.Equal(t, nH.Host.ID().String(), rH.Cluster())
+	rA.upgradeCluster(rB.ClusterID(), nB.Host.ID())
+	rB.upgradeCluster(rA.ClusterID(), nA.Host.ID())
+
+	// A connects with C
+	rA.pm.Receive(nC.Host.ID(), rC.GetHey())
+	require.NoError(t, rA.pm.RecordLatency(nC.Host.ID(), 200*time.Millisecond))
+	rC.pm.Receive(nA.Host.ID(), rA.GetHey())
+	require.NoError(t, rC.pm.RecordLatency(nA.Host.ID(), 200*time.Millisecond))
+
+	rA.upgradeCluster(rC.ClusterID(), nC.Host.ID())
+	rC.upgradeCluster(rA.ClusterID(), nA.Host.ID())
+
+	// B connects with C
+	rB.pm.Receive(nC.Host.ID(), rC.GetHey())
+	require.NoError(t, rB.pm.RecordLatency(nC.Host.ID(), 100*time.Millisecond))
+	rC.pm.Receive(nB.Host.ID(), rB.GetHey())
+	require.NoError(t, rC.pm.RecordLatency(nB.Host.ID(), 100*time.Millisecond))
+
+	rB.upgradeCluster(rC.ClusterID(), nC.Host.ID())
+	rC.upgradeCluster(rB.ClusterID(), nB.Host.ID())
+
+	require.Equal(t, nC.Host.ID().String(), rA.ClusterID())
+	require.Equal(t, nB.Host.ID().String(), rB.ClusterID())
+	require.Equal(t, nC.Host.ID().String(), rC.ClusterID())
+	require.Equal(t, nD.Host.ID().String(), rD.ClusterID())
+	require.Equal(t, nE.Host.ID().String(), rE.ClusterID())
+	require.Equal(t, nF.Host.ID().String(), rF.ClusterID())
+	require.Equal(t, nG.Host.ID().String(), rG.ClusterID())
+	require.Equal(t, nH.Host.ID().String(), rH.ClusterID())
 }

@@ -109,8 +109,8 @@ type Replication struct {
 	interval  time.Duration   // index update interval
 	rtv       RoutedRetriever // used for retrieving new content
 
-	cmu     sync.Mutex
-	cluster string // cluster ID this node is part of (based on peer ID strings)
+	cmu       sync.Mutex
+	clusterID string // cluster ID this node is part of (based on peer ID strings)
 
 	pmu   sync.Mutex
 	pulls map[cid.Cid]*peer.Set // authorized pull requests
@@ -129,7 +129,7 @@ func NewReplication(h host.Host, idx *Index, dt datatransfer.Manager, rtv Routed
 		rgs:       rgs,
 		idx:       idx,
 		rtv:       rtv,
-		cluster:   h.ID().String(), // initially starts alone in its own cluster
+		clusterID: h.ID().String(), // initially starts alone in its own cluster
 		interval:  60 * time.Second,
 		reqProtos: []protocol.ID{PopRequestProtocolID},
 		pulls:     make(map[cid.Cid]*peer.Set),
@@ -236,18 +236,19 @@ func (r *Replication) upgradeCluster(cl string, pr peer.ID) {
 		P: dist.CDF(float64(peers[pr].Latency)),
 	}
 	p := bern.Rand()
+	fmt.Println("result:", p, peers[pr].Latency)
 	if p == 1 {
 		r.cmu.Lock()
-		r.cluster = cl
+		r.clusterID = cl
 		r.cmu.Unlock()
 	}
 }
 
-// Cluster returns the name of the current cluster this peer belongs to
-func (r *Replication) Cluster() string {
+// ClusterID returns the name of the current cluster this peer belongs to
+func (r *Replication) ClusterID() string {
 	r.cmu.Lock()
 	defer r.cmu.Unlock()
-	return r.cluster
+	return r.clusterID
 }
 
 // refreshIndex is a long running process that regularly inspects received indexes
@@ -351,7 +352,7 @@ func (r *Replication) GetHey() Hey {
 	r.cmu.Lock()
 	h := Hey{
 		Regions: regions,
-		Cluster: r.cluster,
+		Cluster: r.clusterID,
 	}
 	r.cmu.Unlock()
 	idxr := r.idx.Root()
