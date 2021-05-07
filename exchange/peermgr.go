@@ -122,5 +122,10 @@ func (pm *PeerMgr) Peers(n int, rl []Region, ignore map[peer.ID]bool) []peer.ID 
 func (pm *PeerMgr) AllPeers() map[peer.ID]Peer {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
-	return pm.peers
+	// Have to copy the map so we don't read it while it gets written in another thread
+	pcopy := make(map[peer.ID]Peer, len(pm.peers))
+	for k, v := range pm.peers {
+		pcopy[k] = v
+	}
+	return pcopy
 }

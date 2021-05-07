@@ -88,7 +88,6 @@ func TestGossipRouting(t *testing.T) {
 			netOpts:  noop,
 			files:    1,
 		},
-
 		{
 			name:     "One to one",
 			topology: OneToOne,
@@ -179,6 +178,66 @@ func TestGossipRouting(t *testing.T) {
 			}
 
 		})
+	}
+
+}
+
+func TestRoutingTopicChange(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	mn := mocknet.New(ctx)
+
+	routings := make(map[peer.ID]*GossipRouting)
+	var nodes []*testutil.TestNode
+
+	fnames := make([]string, 10)
+	for i := range fnames {
+		// This just creates the file without adding it
+		fnames[i] = (&testutil.TestNode{}).CreateRandomFile(t, 256000)
+	}
+	roots := make([]cid.Cid, 10)
+
+	for i := 0; i < 10; i++ {
+		n := testutil.NewTestNode(mn, t)
+
+		tracer := NewGossipTracer()
+		ps, err := pubsub.NewGossipSub(ctx, n.Host, pubsub.WithEventTracer(tracer))
+		require.NoError(t, err)
+		routing := NewGossipRouting(n.Host, ps, tracer, []Region{global})
+		require.NoError(t, routing.StartProviding(ctx, calcResponse))
+
+		require.NoError(t, routing.JoinTopic(n.Host.ID().String()))
+		routing.LeaveTopic(global.Name)
+
+		require.Equal(t, 1, len(routing.tops))
+
+		routings[n.Host.ID()] = routing
+		nodes = append(nodes, n)
+
+		link, _, _ := n.LoadFileToNewStore(ctx, t, fnames[i])
+		roots[i] = link.(cidlink.Link).Cid
+	}
+
+	require.NoError(t, mn.LinkAll())
+	require.NoError(t, mn.ConnectAllButSelf())
+
+	client := nodes[0].Host.ID()
+	resps := make(chan deal.QueryResponse)
+	routings[client].SetReceiver(func(i peer.AddrInfo, r deal.QueryResponse) {
+		resps <- r
+	})
+	require.NoError(t, routings[client].JoinTopic(nodes[2].Host.ID().String()))
+	routings[client].LeaveTopic(client.String())
+
+	err := routings[client].Query(ctx, roots[2], sel.All())
+	require.NoError(t, err)
+
+	select {
+	case r := <-resps:
+		require.Equal(t, r.Size, uint64(268009))
+	case <-ctx.Done():
+		t.Fatal("couldn't get all the responses")
 	}
 
 }
