@@ -142,12 +142,18 @@ type ResponseFunc func(context.Context, peer.ID, Region, deal.Query) (deal.Query
 type GossipRouting struct {
 	h              host.Host
 	ps             *pubsub.PubSub
-	tops           []*pubsub.Topic
 	queryProtocols []protocol.ID
 	meta           MessageTracker
 	regions        []Region
-	rmu            sync.Mutex
-	receiveResp    ReceiveResponse
+	// Set initially when starting up the service
+	ctx      context.Context
+	respFunc ResponseFunc
+
+	rmu         sync.Mutex
+	receiveResp ReceiveResponse
+
+	tmu  sync.Mutex
+	tops map[*pubsub.Topic]*pubsub.Subscription
 }
 
 // NewGossipRouting creates a new GossipRouting service
@@ -157,7 +163,7 @@ func NewGossipRouting(h host.Host, ps *pubsub.PubSub, meta MessageTracker, rgs [
 		ps:      ps,
 		meta:    meta,
 		regions: rgs,
-		tops:    make([]*pubsub.Topic, len(rgs)),
+		tops:    make(map[*pubsub.Topic]*pubsub.Subscription),
 		queryProtocols: []protocol.ID{
 			FilQueryProtocolID,
 			PopQueryProtocolID,
@@ -170,27 +176,55 @@ func NewGossipRouting(h host.Host, ps *pubsub.PubSub, meta MessageTracker, rgs [
 func (gr *GossipRouting) StartProviding(ctx context.Context, fn ResponseFunc) error {
 	// We only need to handle the Pop query protocol since Fil is for querying storage miners
 	gr.h.SetStreamHandler(PopQueryProtocolID, gr.handleQueryResponse)
+	gr.ctx = ctx
+	gr.respFunc = fn
 
-	for i, r := range gr.regions {
-		top, err := gr.ps.Join(fmt.Sprintf("%s/%s", PopQueryProtocolID, r.Name))
-		if err != nil {
-			return err
-		}
-		gr.tops[i] = top
-		sub, err := top.Subscribe()
-		if err != nil {
-			return err
-		}
-		go gr.pump(ctx, sub, fn)
+	for _, r := range gr.regions {
+		gr.JoinTopic(r.Name)
 	}
 
 	return nil
 }
 
-func (gr *GossipRouting) pump(ctx context.Context, sub *pubsub.Subscription, fn ResponseFunc) {
+func topicName(t string) string {
+	return fmt.Sprintf("%s/%s", PopQueryProtocolID, t)
+}
+
+// JoinTopic creates a new topic from the given string and subscribes to it
+func (gr *GossipRouting) JoinTopic(t string) error {
+	top, err := gr.ps.Join(topicName(t))
+	if err != nil {
+		return err
+	}
+	sub, err := top.Subscribe()
+	if err != nil {
+		return err
+	}
+	go gr.pump(sub)
+
+	gr.tmu.Lock()
+	gr.tops[top] = sub
+	gr.tmu.Unlock()
+	return nil
+}
+
+// LeaveTopic cancels a subscription and removes that topic from routing
+func (gr *GossipRouting) LeaveTopic(t string) {
+	gr.tmu.Lock()
+	defer gr.tmu.Unlock()
+	for top, sub := range gr.tops {
+		if top.String() == topicName(t) {
+			sub.Cancel()
+			delete(gr.tops, top)
+			return
+		}
+	}
+}
+
+func (gr *GossipRouting) pump(sub *pubsub.Subscription) {
 	r := RegionFromTopic(sub.Topic())
 	for {
-		msg, err := sub.Next(ctx)
+		msg, err := sub.Next(gr.ctx)
 		if err != nil {
 			return
 		}
@@ -201,7 +235,7 @@ func (gr *GossipRouting) pump(ctx context.Context, sub *pubsub.Subscription, fn 
 		if err := m.UnmarshalCBOR(bytes.NewReader(msg.Data)); err != nil {
 			continue
 		}
-		resp, err := fn(ctx, msg.ReceivedFrom, r, *m)
+		resp, err := gr.respFunc(gr.ctx, msg.ReceivedFrom, r, *m)
 		if err != nil {
 			fmt.Println("declined query", err)
 			continue
@@ -280,7 +314,9 @@ func (gr *GossipRouting) Query(ctx context.Context, root cid.Cid, sel ipld.Node)
 
 	bytes := buf.Bytes()
 	// publish to all regions this exchange joined
-	for _, topic := range gr.tops {
+	gr.tmu.Lock()
+	defer gr.tmu.Unlock()
+	for topic := range gr.tops {
 		if err := topic.Publish(ctx, bytes); err != nil {
 			return err
 		}

@@ -218,6 +218,12 @@ func (e *Exchange) FindAndRetrieve(ctx context.Context, root cid.Cid) error {
 	}
 }
 
+// UpgradeCluster takes a previous and next cluster ID to propgate cluster changes across routing
+func (e *Exchange) UpgradeCluster(prev string, next string) {
+	e.rou.LeaveTopic(prev)
+	e.rou.JoinTopic(next)
+}
+
 // Wallet returns the wallet API
 func (e *Exchange) Wallet() wallet.Driver {
 	return e.w

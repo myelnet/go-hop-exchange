@@ -93,6 +93,9 @@ func (mr *mockRetriever) FindAndRetrieve(ctx context.Context, l cid.Cid) error {
 	}
 }
 
+func (mr *mockRetriever) UpgradeCluster(prev string, next string) {
+}
+
 func TestReplication(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -543,4 +546,80 @@ func TestSendDispatchDiffRegions(t *testing.T) {
 		asiaNodes[p.Provider].VerifyFileTransferred(ctx, t, store.DAG, rootCid, origBytes)
 	}
 	require.Equal(t, 5, len(recipients))
+}
+
+func TestClusterMath(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	mn := mocknet.New(ctx)
+
+	withSwarmT := func(tn *testutil.TestNode) {
+		netw := swarmt.GenSwarm(t, context.Background())
+		h := bhost.NewBlankHost(netw, bhost.WithConnectionManager(
+			connmgr.NewConnManager(10, 11, time.Second),
+		))
+		tn.Host = h
+	}
+	setupNode := func(name string) (*testutil.TestNode, *Replication) {
+		n := testutil.NewTestNode(mn, t, withSwarmT)
+		n.SetupDataTransfer(ctx, t)
+		idx, err := NewIndex(n.Ds, n.Ms, WithBounds(2000000, 1800000))
+		require.NoError(t, err)
+		rtv := NewMockRetriever(n.Dt, idx)
+		repl := &Replication{
+			h:         n.Host,
+			idx:       idx,
+			pm:        NewPeerMgr(n.Host, []Region{global}),
+			clusterID: n.Host.ID().String(),
+			rgs:       []Region{global},
+			rtv:       rtv,
+		}
+		return n, repl
+	}
+
+	nA, rA := setupNode("A")
+	fmt.Println("A", nA.Host.ID())
+	nB, rB := setupNode("B")
+	fmt.Println("B", nB.Host.ID())
+	nC, rC := setupNode("C")
+	fmt.Println("C", nC.Host.ID())
+
+	// Doesn't really matter
+	err := mn.LinkAll()
+	require.NoError(t, err)
+
+	err = mn.ConnectAllButSelf()
+	require.NoError(t, err)
+
+	// A connects with B
+	rA.pm.Receive(nB.Host.ID(), rB.GetHey())
+	require.NoError(t, rA.pm.RecordLatency(nB.Host.ID(), 100*time.Millisecond))
+	rB.pm.Receive(nA.Host.ID(), rA.GetHey())
+	require.NoError(t, rB.pm.RecordLatency(nA.Host.ID(), 100*time.Millisecond))
+
+	rA.upgradeCluster(rB.ClusterID(), nB.Host.ID())
+	rB.upgradeCluster(rA.ClusterID(), nA.Host.ID())
+
+	// A connects with C
+	rA.pm.Receive(nC.Host.ID(), rC.GetHey())
+	require.NoError(t, rA.pm.RecordLatency(nC.Host.ID(), 600*time.Millisecond))
+	rC.pm.Receive(nA.Host.ID(), rA.GetHey())
+	require.NoError(t, rC.pm.RecordLatency(nA.Host.ID(), 600*time.Millisecond))
+
+	rA.upgradeCluster(rC.ClusterID(), nC.Host.ID())
+	rC.upgradeCluster(rA.ClusterID(), nA.Host.ID())
+
+	// B connects with C
+	rB.pm.Receive(nC.Host.ID(), rC.GetHey())
+	require.NoError(t, rB.pm.RecordLatency(nC.Host.ID(), 600*time.Millisecond))
+	rC.pm.Receive(nB.Host.ID(), rB.GetHey())
+	require.NoError(t, rC.pm.RecordLatency(nB.Host.ID(), 600*time.Millisecond))
+
+	rB.upgradeCluster(rC.ClusterID(), nC.Host.ID())
+	rC.upgradeCluster(rB.ClusterID(), nB.Host.ID())
+
+	require.Equal(t, nC.Host.ID().String(), rA.ClusterID())
+	require.Equal(t, nC.Host.ID().String(), rB.ClusterID())
+	require.Equal(t, nC.Host.ID().String(), rC.ClusterID())
 }
