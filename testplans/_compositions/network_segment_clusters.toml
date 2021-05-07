@@ -1,0 +1,30 @@
+[metadata]
+  name = "network_segment_clusters"
+
+[global]
+  plan = "testplans"
+  case = "routing_gossip"
+  total_instances = 10
+  builder = "docker:go"
+  runner = "local:docker"
+
+[global.run.test_params]
+  bootstrap = "8"
+  providers = "3"
+  min_latency = "30ms"
+  max_latency = "1100ms"
+
+[[groups]]
+  id = "bystanders"
+    [groups.instances]
+    count = 6
+
+[[groups]]
+  id = "providers"
+   [groups.instances]
+    count = 3
+
+[[groups]]
+  id = "clients"
+  [groups.instances]
+    count = 1

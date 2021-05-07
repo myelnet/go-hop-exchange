@@ -225,21 +225,23 @@ func (r *Replication) upgradeCluster(cl string, pr peer.ID) {
 		sum += float64(v.Latency)
 	}
 	mean = sum / float64(len(peers))
-	for _, v := range peers {
-		sd += math.Pow(float64(v.Latency)-mean, 2)
-	}
-	if len(peers) > 0 {
+	// if we have more than 1 peer calculate sigma else use initial value
+	if len(peers)-1 > 0 {
+		for _, v := range peers {
+			sd += math.Pow(float64(v.Latency)-mean, 2)
+		}
 		sd = math.Sqrt(sd / float64(len(peers)))
 	} else {
-		// Set an initial standard deviation of 100ms
-		sd = 100
+		// Set an initial standard deviation of 20ms
+		sd = 20
 	}
 	dist := distuv.Normal{
 		Mu:    mean,
 		Sigma: sd,
 	}
+	cdf := dist.CDF(float64(peers[pr].Latency))
 	bern := distuv.Bernoulli{
-		P: dist.CDF(float64(peers[pr].Latency)),
+		P: cdf,
 	}
 	p := bern.Rand()
 	if p == 1 {

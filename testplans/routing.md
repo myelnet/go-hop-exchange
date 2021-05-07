@@ -39,7 +39,7 @@ In these experiments we compare 2 different implementations, one (address broadc
 network address is sent along in the message and the recipient streams the response back directly and the other 
 (recursive forwarding) in which each peer in the gossip transmission chain forwards back to the previous sender.
 
-### [Low Content Replication](/testplans/discovery/_compositions/low_content_replication.toml)
+### [Low Content Replication](/testplans/_compositions/low_content_replication.toml)
 
 This composition evaluates the performance of the network with low to no content replication over a
 large network.
@@ -65,7 +65,7 @@ in which client and provider are directly connected vs when they're not.
 When forwarding back to the previous sender we reuse existing connections so the speed depends on the number of
 hops between peers and makes the speed more consistant.
 
-### [High Content Replication](/testplans/discovery/_compositions/high_content_replication.toml)
+### [High Content Replication](/testplans/_compositions/high_content_replication.toml)
 
 This composition evaluates the performance of the network with high content replication over a large 
 network.
@@ -87,7 +87,7 @@ A higher content replication means a higher likelihood that the client is direct
 provider hence a majority of queries are very quick to execute even with a high latency and jitter.
 Using recursive forwarding yields very similar speed.
 
-### [Network Segmentation By Region](/testplans/discovery/_compositions/network_segment_region.toml)
+### [Network Segmentation By Region](/testplans/_compositions/network_segment_region.toml)
 
 This composition demonstrates the segmentation of the gossip network into different topics based on geographic
 regions. Messages are only published to a topic in which the subscribers have relatively similar latency.
@@ -110,7 +110,7 @@ fast. Even if peers are likely to dial each other, when they are very close to e
 doesn't impact the speed as significantly as with peers with higher latency.
 RF looks very similar in speed though significantly more consistant across samples.
 
-### [Network Segmentation By Content](/testplans/discovery/_compositions/network_segment_content.toml)
+### [Network Segmentation By Content](/testplans/_compositions/network_segment_content.toml)
 
 This composition demonstrates the segmentation of the gossip network by type of content. I.e. an application
 has created its own subnetwork in which clients can query the topic to find their content. Currently the 
@@ -135,3 +135,5 @@ This is because peers with different latencies can subscribe to the same topic t
 peers will be nearby.
 RF appears to offer better performance in these conditions, might be because smaller amount of subscribers
 means less hops though it is very likely peers won't be directly connected.
+
+### [Network Segmentation By Cluster Difusion](/testplans/_compositions/network_segment_clusters.toml)
