@@ -93,6 +93,7 @@ func (rs *RequestStream) OtherPeer() peer.ID {
 // RoutedRetriever is a generic interface providing a method to find and retrieve content on the exchange
 type RoutedRetriever interface {
 	FindAndRetrieve(context.Context, cid.Cid) error
+	UpgradeCluster(prev string, next string)
 }
 
 // Replication manages the network replication scheme, it keeps track of read and write requests
@@ -227,7 +228,12 @@ func (r *Replication) upgradeCluster(cl string, pr peer.ID) {
 	for _, v := range peers {
 		sd += math.Pow(float64(v.Latency)-mean, 2)
 	}
-	sd = math.Sqrt(sd / float64(len(peers)))
+	if len(peers) > 0 {
+		sd = math.Sqrt(sd / float64(len(peers)))
+	} else {
+		// Set an initial standard deviation of 100ms
+		sd = 100
+	}
 	dist := distuv.Normal{
 		Mu:    mean,
 		Sigma: sd,
@@ -236,9 +242,9 @@ func (r *Replication) upgradeCluster(cl string, pr peer.ID) {
 		P: dist.CDF(float64(peers[pr].Latency)),
 	}
 	p := bern.Rand()
-	fmt.Println("result:", p, peers[pr].Latency)
 	if p == 1 {
 		r.cmu.Lock()
+		r.rtv.UpgradeCluster(r.clusterID, cl)
 		r.clusterID = cl
 		r.cmu.Unlock()
 	}
