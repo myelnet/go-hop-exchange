@@ -131,7 +131,7 @@ Manage your Myel point of presence from the command line.
 	go func() {
 		select {
 		case s := <-interrupt:
-			fmt.Printf("Shutting down, reason: %s\n", s.String())
+			fmt.Printf("\nShutting down, reason: %s\n", s.String())
 			cancel()
 		case <-ctx.Done():
 		}
