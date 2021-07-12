@@ -327,10 +327,6 @@ func Run(ctx context.Context, opts Options) error {
 
 	nd.notify = server.cs.send
 
-	rpcServer := jsonrpc.NewServer()
-	rpcServer.Register("pop", nd)
-	http.Handle("/rpc", rpcServer)
-
 	go serveHTTP(server, httpl)
 	go serveTCP(ctx, server, tcpl)
 	go func() {
@@ -347,6 +343,12 @@ func Run(ctx context.Context, opts Options) error {
 
 func serveHTTP(server *server, l net.Listener) {
 	mx := http.NewServeMux()
+
+	// register RPC
+	rpcServer := jsonrpc.NewServer()
+	rpcServer.Register("pop", server.node)
+
+	mx.Handle("/rpc", rpcServer)
 	mx.Handle("/", server.localhostHandler())
 
 	s := &http.Server{
