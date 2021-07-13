@@ -1,5 +1,40 @@
 package filetype
 
+type Mime struct {
+	extension string
+	type_     Type
+	mimetype  string
+}
+
+// AllMimes groups all mimes in a map by their file extension
+var AllMimes = map[string]Mime{}
+
+func init() {
+	mapMimes := map[Type]map[string]string{
+		Application: application,
+		Audio:       audio,
+		Video:       video,
+		Image:       image,
+		Text:        text,
+		Archive:     archive,
+		Chemical:    chemical,
+		Font:        font,
+		Message:     message,
+		Model:       model,
+	}
+
+	// add all the mimes to AllMimes
+	for type_, mapMime := range mapMimes {
+		for ext, mimetype := range mapMime {
+			AllMimes[ext] = Mime{
+				extension: ext,
+				type_:     type_,
+				mimetype:  mimetype,
+			}
+		}
+	}
+}
+
 var application = map[string]string{
 	"ez":           "application/andrew-inset",
 	"aw":           "application/applixware",

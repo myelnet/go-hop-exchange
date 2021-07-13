@@ -10,7 +10,8 @@ import (
 type Type int
 
 const (
-	Application Type = iota
+	Unknown Type = iota
+	Application
 	Audio
 	Video
 	Image
@@ -22,20 +23,22 @@ const (
 	Archive
 )
 
-func Detect(path string, types ...Type) bool {
+// Detect detects the Type of a file using it's extension.
+// If no extension is given, it will try to guess is by using the first 512 bytes of a file
+func Detect(path string) Type {
 	ext := Ext(path)
 	if ext != "" {
-		return match(ext, types...)
+		return match(ext)
 	}
 
 	mtype, err := mimetype.DetectFile(path)
 	if err != nil {
-		return false
+		return Unknown
 	}
 
 	ext = Ext(mtype.Extension())
 
-	return match(ext, types...)
+	return match(ext)
 }
 
 // Ext returns the file extension.
@@ -50,61 +53,12 @@ func Ext(path string) string {
 	return strings.Join(splitFilename[1:], ".")
 }
 
-func match(ext string, types ...Type) bool {
-	for _, type_ := range types {
-		switch type_ {
-		case Application:
-			_, ok := application[ext]
-			if ok {
-				return true
-			}
-		case Audio:
-			_, ok := audio[ext]
-			if ok {
-				return true
-			}
-		case Video:
-			_, ok := video[ext]
-			if ok {
-				return true
-			}
-		case Image:
-			_, ok := image[ext]
-			if ok {
-				return true
-			}
-		case Chemical:
-			_, ok := chemical[ext]
-			if ok {
-				return true
-			}
-		case Font:
-			_, ok := font[ext]
-			if ok {
-				return true
-			}
-		case Message:
-			_, ok := message[ext]
-			if ok {
-				return true
-			}
-		case Model:
-			_, ok := model[ext]
-			if ok {
-				return true
-			}
-		case Text:
-			_, ok := text[ext]
-			if ok {
-				return true
-			}
-		case Archive:
-			_, ok := archive[ext]
-			if ok {
-				return true
-			}
-		}
+// match matches an extension with its Type, i.e : match("file.zip") returns Archive
+func match(ext string) Type {
+	mime, ok := AllMimes[ext]
+	if ok {
+		return mime.type_
 	}
 
-	return false
+	return Unknown
 }
