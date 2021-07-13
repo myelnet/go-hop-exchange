@@ -24,8 +24,13 @@ const (
 )
 
 // Detect detects the Type of a file using it's extension.
-// If no extension is given, it will try to guess is by using the first 512 bytes of a file
+// If no extension is given, it will try to guess is by using the first 512 bytes of a file.
+// The path argument should be absolute
 func Detect(path string) Type {
+	if path == "" {
+		return Unknown
+	}
+
 	ext := Ext(path)
 	if ext != "" {
 		return match(ext)

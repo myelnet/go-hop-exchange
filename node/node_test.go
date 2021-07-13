@@ -755,19 +755,19 @@ func TestPreload(t *testing.T) {
 
 	data1 := make([]byte, 10000)
 	rand.New(rand.NewSource(time.Now().UnixNano())).Read(data1)
-	cid1, err := pn.Add(ctx, tx.Store().DAG, bytes.NewReader(data1))
+	cid1, err := pn.Add(ctx, "", tx.Store().DAG, bytes.NewReader(data1))
 	require.NoError(t, err)
 	require.NoError(t, tx.Put("first", cid1, 10000))
 
 	data2 := make([]byte, 14000)
 	rand.New(rand.NewSource(time.Now().UnixNano())).Read(data2)
-	cid2, err := pn.Add(ctx, tx.Store().DAG, bytes.NewReader(data2))
+	cid2, err := pn.Add(ctx, "", tx.Store().DAG, bytes.NewReader(data2))
 	require.NoError(t, err)
 	require.NoError(t, tx.Put("second", cid2, 14000))
 
 	data3 := make([]byte, 26000)
 	rand.New(rand.NewSource(time.Now().UnixNano())).Read(data3)
-	cid3, err := pn.Add(ctx, tx.Store().DAG, bytes.NewReader(data3))
+	cid3, err := pn.Add(ctx, "", tx.Store().DAG, bytes.NewReader(data3))
 	require.NoError(t, err)
 	require.NoError(t, tx.Put("third", cid3, 26000))
 
@@ -944,19 +944,19 @@ func TestLoadKey(t *testing.T) {
 
 	data1 := make([]byte, 10000)
 	rand.New(rand.NewSource(time.Now().UnixNano())).Read(data1)
-	cid1, err := pn.Add(ctx, tx.Store().DAG, bytes.NewReader(data1))
+	cid1, err := pn.Add(ctx, "", tx.Store().DAG, bytes.NewReader(data1))
 	require.NoError(t, err)
 	require.NoError(t, tx.Put("first", cid1, 10000))
 
 	data2 := make([]byte, 14000)
 	rand.New(rand.NewSource(time.Now().UnixNano())).Read(data2)
-	cid2, err := pn.Add(ctx, tx.Store().DAG, bytes.NewReader(data2))
+	cid2, err := pn.Add(ctx, "", tx.Store().DAG, bytes.NewReader(data2))
 	require.NoError(t, err)
 	require.NoError(t, tx.Put("second", cid2, 14000))
 
 	data3 := make([]byte, 26000)
 	rand.New(rand.NewSource(time.Now().UnixNano())).Read(data3)
-	cid3, err := pn.Add(ctx, tx.Store().DAG, bytes.NewReader(data3))
+	cid3, err := pn.Add(ctx, "", tx.Store().DAG, bytes.NewReader(data3))
 	require.NoError(t, err)
 	require.NoError(t, tx.Put("third", cid3, 26000))
 
@@ -1088,19 +1088,19 @@ func TestLoadAll(t *testing.T) {
 
 	data1 := make([]byte, 10000)
 	rand.New(rand.NewSource(time.Now().UnixNano())).Read(data1)
-	cid1, err := pn.Add(ctx, tx.Store().DAG, bytes.NewReader(data1))
+	cid1, err := pn.Add(ctx, "", tx.Store().DAG, bytes.NewReader(data1))
 	require.NoError(t, err)
 	require.NoError(t, tx.Put("first", cid1, 10000))
 
 	data2 := make([]byte, 14000)
 	rand.New(rand.NewSource(time.Now().UnixNano())).Read(data2)
-	cid2, err := pn.Add(ctx, tx.Store().DAG, bytes.NewReader(data2))
+	cid2, err := pn.Add(ctx, "", tx.Store().DAG, bytes.NewReader(data2))
 	require.NoError(t, err)
 	require.NoError(t, tx.Put("second", cid2, 14000))
 
 	data3 := make([]byte, 26000)
 	rand.New(rand.NewSource(time.Now().UnixNano())).Read(data3)
-	cid3, err := pn.Add(ctx, tx.Store().DAG, bytes.NewReader(data3))
+	cid3, err := pn.Add(ctx, "", tx.Store().DAG, bytes.NewReader(data3))
 	require.NoError(t, err)
 	require.NoError(t, tx.Put("third", cid3, 26000))
 
