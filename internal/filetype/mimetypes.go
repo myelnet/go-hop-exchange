@@ -10,7 +10,7 @@ type Mime struct {
 var AllMimes = map[string]Mime{}
 
 func init() {
-	mapMimes := map[Type]map[string]string{
+	arrayMimes := []map[string]string{
 		Application: application,
 		Audio:       audio,
 		Video:       video,
@@ -24,11 +24,11 @@ func init() {
 	}
 
 	// add all the mimes to AllMimes
-	for type_, mapMime := range mapMimes {
+	for type_, mapMime := range arrayMimes {
 		for ext, mimetype := range mapMime {
 			AllMimes[ext] = Mime{
 				extension: ext,
-				type_:     type_,
+				type_:     Type(type_),
 				mimetype:  mimetype,
 			}
 		}

@@ -1,6 +1,7 @@
 package filetype
 
 import (
+	"io"
 	"path/filepath"
 	"strings"
 
@@ -26,11 +27,7 @@ const (
 // Detect detects the Type of a file using it's extension.
 // If no extension is given, it will try to guess is by using the first 512 bytes of a file.
 // The path argument should be absolute
-func Detect(path string) Type {
-	if path == "" {
-		return Unknown
-	}
-
+func Detect(path string, buf io.ReadSeeker) Type {
 	ext := Ext(path)
 	if ext != "" {
 		return match(ext)
@@ -38,7 +35,14 @@ func Detect(path string) Type {
 
 	mtype, err := mimetype.DetectFile(path)
 	if err != nil {
-		return Unknown
+		// we need to rewind the buf since the mimetype lib will consume
+		// the first bytes to detect the file type
+		defer buf.Seek(0, io.SeekStart)
+
+		mtype, err = mimetype.DetectReader(buf)
+		if err != nil || mtype.Extension() == "" {
+			return Unknown
+		}
 	}
 
 	ext = Ext(mtype.Extension())
@@ -46,14 +50,11 @@ func Detect(path string) Type {
 	return match(ext)
 }
 
-// Ext returns the file extension.
+// Ext returns the file's extension.
 // filepath.Ext() does not handle correctly extensions like .tar.gz
 func Ext(path string) string {
 	filename := filepath.Base(path)
 	splitFilename := strings.Split(filename, ".")
-	if len(splitFilename) == 0 {
-		return ""
-	}
 
 	return strings.Join(splitFilename[1:], ".")
 }
