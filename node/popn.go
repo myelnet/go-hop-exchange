@@ -1238,8 +1238,8 @@ func (nd *node) Add(ctx context.Context, filename string, dag ipldformat.DAGServ
 
 // add chooses the best chunk params according to the file's type then adds the buffer into the DAG
 func add(filename string, buf io.ReadSeeker, params helpers.DagBuilderParams) (ipldformat.Node, error) {
-	var layout func(db *helpers.DagBuilderHelper) (ipldformat.Node, error)
 	var chunkSplitter chunk.Splitter
+	var layout func(db *helpers.DagBuilderHelper) (ipldformat.Node, error)
 
 	type_ := filetype.Detect(filename, buf)
 
@@ -1247,30 +1247,22 @@ func add(filename string, buf io.ReadSeeker, params helpers.DagBuilderParams) (i
 	case filetype.Audio, filetype.Video:
 		chunkSize := int64(1_000_000)
 		chunkSplitter = chunk.NewSizeSplitter(buf, chunkSize)
-		layout = func(db *helpers.DagBuilderHelper) (ipldformat.Node, error) {
-			return trickle.Layout(db)
-		}
+		layout = trickle.Layout
 
 	case filetype.Image, filetype.Archive:
 		chunkSize := int64(1_000_000)
 		chunkSplitter = chunk.NewSizeSplitter(buf, chunkSize)
-		layout = func(db *helpers.DagBuilderHelper) (ipldformat.Node, error) {
-			return balanced.Layout(db)
-		}
+		layout = balanced.Layout
 
 	case filetype.Text, filetype.Font:
 		//chunkSize := int64(16_000)
 		chunkSplitter = chunk.NewBuzhash(buf)
-		layout = func(db *helpers.DagBuilderHelper) (ipldformat.Node, error) {
-			return balanced.Layout(db)
-		}
+		layout = balanced.Layout
 
 	default:
 		chunkSize := int64(128_000)
 		chunkSplitter = chunk.NewSizeSplitter(buf, chunkSize)
-		layout = func(db *helpers.DagBuilderHelper) (ipldformat.Node, error) {
-			return balanced.Layout(db)
-		}
+		layout = balanced.Layout
 	}
 
 	db, err := params.New(chunkSplitter)
