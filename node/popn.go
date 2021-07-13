@@ -1236,7 +1236,7 @@ func (nd *node) Add(ctx context.Context, filename string, dag ipldformat.DAGServ
 	return n.Cid(), nil
 }
 
-// add chooses the best params according to the file's type then put the buffer into the DAG
+// add chooses the best chunk params according to the file's type then adds the buffer into the DAG
 func add(filename string, buf io.ReadSeeker, params helpers.DagBuilderParams) (ipldformat.Node, error) {
 	var layout func(db *helpers.DagBuilderHelper) (ipldformat.Node, error)
 	var chunkSplitter chunk.Splitter
