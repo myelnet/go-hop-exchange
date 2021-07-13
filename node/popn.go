@@ -34,6 +34,7 @@ import (
 	"github.com/ipfs/go-path"
 	"github.com/ipfs/go-unixfs/importer/balanced"
 	"github.com/ipfs/go-unixfs/importer/helpers"
+	"github.com/ipfs/go-unixfs/importer/trickle"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p"
 	connmgr "github.com/libp2p/go-libp2p-connmgr"
@@ -49,6 +50,7 @@ import (
 	"github.com/myelnet/pop/exchange"
 	"github.com/myelnet/pop/filecoin"
 	"github.com/myelnet/pop/filecoin/storage"
+	"github.com/myelnet/pop/internal/filetype"
 	"github.com/myelnet/pop/internal/utils"
 	"github.com/myelnet/pop/retrieval/client"
 	"github.com/myelnet/pop/retrieval/deal"
@@ -1210,7 +1212,7 @@ func (nd *node) List(ctx context.Context, args *ListArgs) {
 }
 
 // Add a buffer into the given DAG. These DAGs can eventually be put into transactions.
-func (nd *node) Add(ctx context.Context, dag ipldformat.DAGService, buf io.Reader) (cid.Cid, error) {
+func (nd *node) Add(ctx context.Context, filename string, dag ipldformat.DAGService, buf io.Reader) (cid.Cid, error) {
 	bufferedDS := ipldformat.NewBufferedDAG(ctx, dag)
 
 	prefix, err := merkledag.PrefixForCidVersion(1)
@@ -1226,12 +1228,7 @@ func (nd *node) Add(ctx context.Context, dag ipldformat.DAGService, buf io.Reade
 		Dagserv:    bufferedDS,
 	}
 
-	db, err := params.New(chunk.NewSizeSplitter(buf, int64(128000)))
-	if err != nil {
-		return cid.Undef, err
-	}
-
-	n, err := balanced.Layout(db)
+	n, err := add(filename, buf, params)
 	if err != nil {
 		return cid.Undef, err
 	}
@@ -1242,6 +1239,56 @@ func (nd *node) Add(ctx context.Context, dag ipldformat.DAGService, buf io.Reade
 	}
 
 	return n.Cid(), nil
+}
+
+// add chooses the best params according to the file's type then put the buffer into the DAG
+func add(filename string, buf io.Reader, params helpers.DagBuilderParams) (ipldformat.Node, error) {
+	var layout func(db *helpers.DagBuilderHelper) (ipldformat.Node, error)
+	var chunkSplitter chunk.Splitter
+
+	type_ := filetype.Detect(filename)
+
+	switch type_ {
+	case filetype.Audio, filetype.Video:
+		chunkSize := int64(1_000_000)
+		chunkSplitter = chunk.NewSizeSplitter(buf, chunkSize)
+		layout = func(db *helpers.DagBuilderHelper) (ipldformat.Node, error) {
+			return trickle.Layout(db)
+		}
+
+	case filetype.Image, filetype.Archive:
+		chunkSize := int64(1_000_000)
+		chunkSplitter = chunk.NewSizeSplitter(buf, chunkSize)
+		layout = func(db *helpers.DagBuilderHelper) (ipldformat.Node, error) {
+			return balanced.Layout(db)
+		}
+
+	case filetype.Text, filetype.Font:
+		//chunkSize := int64(16_000)
+		chunkSplitter = chunk.NewBuzhash(buf)
+		layout = func(db *helpers.DagBuilderHelper) (ipldformat.Node, error) {
+			return balanced.Layout(db)
+		}
+
+	default:
+		chunkSize := int64(128_000)
+		chunkSplitter = chunk.NewSizeSplitter(buf, chunkSize)
+		layout = func(db *helpers.DagBuilderHelper) (ipldformat.Node, error) {
+			return balanced.Layout(db)
+		}
+	}
+
+	db, err := params.New(chunkSplitter)
+	if err != nil {
+		return nil, err
+	}
+
+	n, err := layout(db)
+	if err != nil {
+		return nil, err
+	}
+
+	return n, nil
 }
 
 // getRef is an internal function to find a ref with a given string cid
@@ -1285,7 +1332,7 @@ func (nd *node) addRecursive(ctx context.Context, name string, file files.Node, 
 		}
 		return it.Err()
 	case files.File:
-		froot, err := nd.Add(ctx, nd.tx.Store().DAG, f)
+		froot, err := nd.Add(ctx, name, nd.tx.Store().DAG, f)
 		if err != nil {
 			return err
 		}
