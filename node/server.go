@@ -13,10 +13,9 @@ import (
 	"net/http"
 	gopath "path"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
-
-	"runtime/debug"
 
 	"github.com/filecoin-project/go-jsonrpc"
 	"github.com/gabriel-vasile/mimetype"
@@ -28,6 +27,8 @@ import (
 	"github.com/myelnet/pop/internal/utils"
 	sel "github.com/myelnet/pop/selectors"
 	"github.com/rs/zerolog/log"
+	"github.com/soheilhy/cmux"
+	"runtime/debug"
 )
 
 // server listens for connection and controls the node to execute requests
@@ -43,26 +44,7 @@ type server struct {
 
 func (s *server) serveConn(ctx context.Context, c net.Conn) {
 	br := bufio.NewReader(c)
-	c.SetReadDeadline(time.Now().Add(time.Second))
-	peek, _ := br.Peek(4)
 	c.SetReadDeadline(time.Time{})
-	isHTTPReq := string(peek) == "GET " || string(peek) == "OPTI" || string(peek) == "POST"
-
-	if isHTTPReq {
-		httpServer := http.Server{
-			// Localhost connections are cheap; so only do
-			// keep-alives for a short period of time, as these
-			// active connections lock the server into only serving
-			// that user. If the user has this page open, we don't
-			// want another switching user to be locked out for
-			// minutes. 5 seconds is enough to let browser hit
-			// favicon.ico and such.
-			IdleTimeout: 5 * time.Second,
-			Handler:     http.DefaultServeMux,
-		}
-		httpServer.Serve(&oneConnListener{&protoSwitchConn{br: br, Conn: c}})
-		return
-	}
 
 	s.addConn(c)
 	defer s.removeAndCloseConn(c)
@@ -81,7 +63,6 @@ func (s *server) serveConn(ctx context.Context, c net.Conn) {
 			log.Error().Err(err).Msg("GotMsgBytes")
 		}
 		s.csMu.Unlock()
-
 	}
 }
 
@@ -327,22 +308,17 @@ func parseContentReplication(contentReplication string) (int, error) {
 
 // Run runs a pop IPFS node
 func Run(ctx context.Context, opts Options) error {
-	done := make(chan struct{})
-	defer close(done)
-
-	// listen, err := socket.Listen(socketPath, port)
-	listen, err := SocketListen(opts.SocketPath)
+	l, err := net.Listen("tcp", "127.0.0.1:2001")
 	if err != nil {
 		return fmt.Errorf("SocketListen: %v", err)
 	}
 
-	go func() {
-		select {
-		case <-ctx.Done():
-		case <-done:
-		}
-		listen.Close()
-	}()
+	// Create a mux to listen for TCP / HTTP requests on same port
+	m := cmux.New(l)
+	defer m.Close()
+
+	httpl := m.Match(cmux.HTTP1Fast())
+	tcpl := m.Match(cmux.Any())
 
 	nd, err := New(ctx, opts)
 	if err != nil {
@@ -363,20 +339,47 @@ func Run(ctx context.Context, opts Options) error {
 
 	nd.notify = server.cs.send
 
-	http.Handle("/", server.localhostHandler())
+	go serveHTTP(server, httpl)
+	go serveTCP(ctx, server, tcpl)
+	go func() {
+		err := m.Serve()
+		if err != nil && !strings.Contains(err.Error(), "use of closed network connection") {
+			log.Error().Err(err).Msg("serve CMux")
+		}
+	}()
 
+	<-ctx.Done()
+
+	return ctx.Err()
+}
+
+func serveHTTP(server *server, l net.Listener) {
+	mx := http.NewServeMux()
+
+	// register RPC
 	rpcServer := jsonrpc.NewServer()
-	rpcServer.Register("pop", nd)
+	rpcServer.Register("pop", server.node)
 
-	http.Handle("/rpc", rpcServer)
+	mx.Handle("/rpc", rpcServer)
+	mx.Handle("/", server.localhostHandler())
 
+	s := &http.Server{
+		Handler: mx,
+	}
+	err := s.Serve(l)
+	if err != nil && err != cmux.ErrServerClosed {
+		log.Error().Err(err).Msg("serveHTTP")
+	}
+}
+
+func serveTCP(ctx context.Context, server *server, l net.Listener) {
 	b := backoff.Backoff{
 		Min: time.Second,
 		Max: time.Second * 5,
 	}
 
 	for ctx.Err() == nil {
-		c, err := listen.Accept()
+		c, err := l.Accept()
 		if err != nil {
 			if ctx.Err() == nil {
 				log.Error().Err(err).Msg("listen.Accept")
@@ -390,6 +393,7 @@ func Run(ctx context.Context, opts Options) error {
 
 		// reset backoff
 		b.Reset()
+
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -400,39 +404,4 @@ func Run(ctx context.Context, opts Options) error {
 			server.serveConn(ctx, c)
 		}()
 	}
-
-	return ctx.Err()
 }
-
-type dummyAddr string
-
-// wraps a connection into a listener
-type oneConnListener struct {
-	conn net.Conn
-}
-
-func (l *oneConnListener) Accept() (c net.Conn, err error) {
-	c = l.conn
-	if c == nil {
-		err = io.EOF
-		return
-	}
-	err = nil
-	l.conn = nil
-	return
-}
-
-func (l *oneConnListener) Close() error { return nil }
-
-func (l *oneConnListener) Addr() net.Addr { return dummyAddr("unused-address") }
-
-func (a dummyAddr) Network() string { return string(a) }
-func (a dummyAddr) String() string  { return string(a) }
-
-// protoSwitchConn is a net.Conn that lets us Read from its bufio.Reader
-type protoSwitchConn struct {
-	net.Conn
-	br *bufio.Reader
-}
-
-func (psc *protoSwitchConn) Read(p []byte) (int, error) { return psc.br.Read(p) }

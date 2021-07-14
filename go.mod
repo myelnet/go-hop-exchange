@@ -69,6 +69,7 @@ require (
 	github.com/onsi/gomega v1.11.0 // indirect
 	github.com/peterbourgon/ff/v3 v3.0.0
 	github.com/rs/zerolog v1.20.0
+	github.com/soheilhy/cmux v0.1.5
 	github.com/stretchr/testify v1.7.0
 	github.com/tchardin/go-libp2p-blankhost v0.2.1-0.20210408134851-9396bc83e200
 	github.com/urfave/cli/v2 v2.2.0 // indirect

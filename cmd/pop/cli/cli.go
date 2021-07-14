@@ -117,7 +117,7 @@ change until a first stable release. To get started run 'pop start'.
 }
 
 func connect(ctx context.Context) (net.Conn, *node.CommandClient, context.Context, context.CancelFunc) {
-	c, err := node.SocketConnect()
+	c, err := net.Dial("tcp", "127.0.0.1:2001")
 	if err != nil {
 		log.Fatal().Msg("Unable to connect")
 	}
