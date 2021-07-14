@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-multistore"
 	"github.com/filecoin-project/go-state-types/abi"
@@ -717,7 +718,6 @@ func (nd *node) Load(ctx context.Context, args *GetArgs) (chan GetResult, error)
 		// If we already have an offer we can skip routing queries
 		offer, err := nd.omg.GetOffer(root)
 		if err != nil {
-
 			err = tx.Query(s)
 			if err != nil {
 				sendErr(err)
@@ -754,6 +754,12 @@ func (nd *node) Load(ctx context.Context, args *GetArgs) (chan GetResult, error)
 			offer = selection.Offer
 
 			log.Info().Msg("selected an offer")
+
+			bal, err := nd.exch.Wallet().Balance(ctx, nd.exch.Wallet().DefaultAddress())
+			if err != nil {
+				log.Error().Err(err).Msg("error when fetching balance")
+			}
+			fmt.Printf("Fil balance: %s attofil\n", humanize.Comma(bal.Int64()))
 
 			funds := offer.RetrievalPrice()
 			// If we're fetching entries, the selector and funds need to be updated

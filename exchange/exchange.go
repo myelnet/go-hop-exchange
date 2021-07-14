@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/dustin/go-humanize"
 	"github.com/filecoin-project/go-address"
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-multistore"
@@ -21,6 +22,7 @@ import (
 	"github.com/myelnet/pop/selectors"
 	sel "github.com/myelnet/pop/selectors"
 	"github.com/myelnet/pop/wallet"
+	"github.com/rs/zerolog/log"
 )
 
 // Exchange is a financially incentivized IPLD  block exchange
@@ -113,6 +115,13 @@ func (e *Exchange) handleQuery(ctx context.Context, p peer.ID, r Region, q deal.
 	if err != nil {
 		sel = selectors.All()
 	}
+
+	bal, err := e.Wallet().Balance(ctx, e.Wallet().DefaultAddress())
+	if err != nil {
+		log.Error().Err(err).Msg("error when fetching balance")
+	}
+	fmt.Printf("Fil balance: %s attofil\n", humanize.Comma(bal.Int64()))
+
 	// DAGStat is both a way of checking if we have the blocks and returning its size
 	stats, err := utils.Stat(ctx, &multistore.Store{Bstore: e.opts.Blockstore}, q.PayloadCID, sel)
 	// We don't have the block we don't even reply to avoid taking bandwidth
