@@ -488,7 +488,7 @@ func (w *KeystoreWallet) Balance(ctx context.Context, addr address.Address) (fil
 		return big.Zero(), ErrNoAPI
 	}
 	state, err := w.fAPI.StateReadState(ctx, addr, fil.EmptyTSK)
-	if err != nil {
+	if err != nil || state == nil {
 		return big.Zero(), err
 	}
 	return state.Balance, nil
